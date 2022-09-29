@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.11
+# v0.19.12
 
 using Markdown
 using InteractiveUtils
@@ -31,6 +31,7 @@ md"
 "
 
 # ╔═╡ 4f83121f-4b98-4854-adb4-7e11be25b482
+X = load("./crater_lake_coords.jld2")["X"]
 
 # ╔═╡ 60e98df1-e21a-4c8d-ba54-50455b61379c
 md"🐜 use `Makie` to draw a scatter plot of the points tracing the lake (contained in `X`). 
@@ -44,7 +45,39 @@ I wrote a function `viz_lake(X)` to do this, but you don't have to.
 	use `Makie.jl` to make a `scatter` plot. see [here](https://docs.makie.org/v0.17.13/tutorials/basic-tutorial/#scatter_plot).
 "
 
+# ╔═╡ 68ad49c5-6bd5-460c-b404-33e52292dd6d
+function drawlake()
+	f = Figure()
+	ax = Axis(f[1, 1],
+	    title = "Crater Lake",
+		titlesize = 24,
+	    xlabel = "Miles",
+	    ylabel = "Miles",
+		aspect=DataAspect()
+	)
+	
+	return f
+end
+
+# ╔═╡ e9dbfd3f-a0d9-4dec-899b-aa62be5790dd
+function drawlake(data)
+	f = drawlake()
+	scatter!(data[begin, :], data[end, :], label="Lake Coords")
+	
+	return f
+end
+
+# ╔═╡ 010f8cc2-dbc9-4fa0-bc0a-2c088bfc00d5
+function drawlake(data, interp_data)
+	f = drawlake(data)
+	x, y = interp_data
+	lines!(x, y)
+
+	return f
+end
+
 # ╔═╡ fd1a78dc-2fb4-48f9-a61c-fa00ecfd367b
+drawlake(X)
 
 # ╔═╡ 4ec36505-66d9-4cd0-a4c5-e3718d1a5cba
 md"
@@ -64,6 +97,7 @@ with $\mathbf{x}_i\in\mathbb{R}^2$ one of $N$ coordinates on the lake boundary.
 "
 
 # ╔═╡ b45e7b0a-8644-4210-bec9-8fd3076b08f4
+x̄ = mean(X; dims=2)
 
 # ╔═╡ 3a088002-b238-46eb-86f8-483ca5b9a7c2
 md"🐜 define a centered coordinate matrix `X̂` whose column $i$ gives the centered coordinate:
@@ -74,9 +108,13 @@ i.e., subtract the mean vector from each column of the matrix `X` to obtain `X̂
 "
 
 # ╔═╡ bc825fb1-5ee5-4d39-9ec2-a99ca8b68e79
+X̂ = X .- x̄
 
 # ╔═╡ 89dde6a1-1230-4841-8fca-c2563a54fd4a
 md"🐜 redraw the lake boundary (exactly as above) using the centered coordinates. the lake should be the exact same shape, but centered at the origin $(0, 0)$."
+
+# ╔═╡ a9cf8d6e-1607-44e6-8f74-769ce7bff060
+drawlake(X̂)
 
 # ╔═╡ 9a6aa8a8-fd6a-4928-bf28-b7444b2e6d3b
 md"## parameterizing the lake as $r=r(\theta)$
@@ -94,6 +132,15 @@ first, let's translate the data, currently in Cartesian coordinates, into polar 
 "
 
 # ╔═╡ 0edc2e54-6552-4a56-aa03-87ae8886e826
+begin
+	xdim, ydim = size(X̂)
+	r = zeros(ydim)
+	for i=1:ydim
+		x, y = X̂[:, i] # grab column
+		r[i] = √(x^2 + y^2)
+	end
+	r
+end
 
 # ╔═╡ d866aace-c019-4fe3-a77e-d681e1af001f
 md"🐜 create a vector θ whose entry $i$ gives the angle coordinate $\mathbf{x}_i$ makes with the x₁-axis.
@@ -103,6 +150,14 @@ md"🐜 create a vector θ whose entry $i$ gives the angle coordinate $\mathbf{x
 "
 
 # ╔═╡ 6d01e662-761f-4f33-89d9-7d29c4196366
+begin
+	θ = zeros(ydim)
+	for i=1:ydim
+		x, y = X̂[:, i] # grab column
+		θ[i] = atan(y, x)
+	end
+	θ
+end
 
 # ╔═╡ cbce6c42-b5db-4b59-8399-495289c3b247
 md"🐜 to check your representation of the data in polar cooradinates, plot the points tracing the lake boundary again but compute the $(x_1, x_2)$ Cartesian coordinates for `scatter` using the formulas $x_1=r \cos(\theta)$ and $x_2=r\sin(\theta)$ and your vectors `r` and `θ`.
@@ -112,6 +167,13 @@ md"🐜 to check your representation of the data in polar cooradinates, plot the
 "
 
 # ╔═╡ d3a6961d-3f70-4b9e-8bc9-38e8ad91c952
+begin
+	checkdata_x = r .* cos.(θ)
+	checkdata_y = r .* sin.(θ)
+	checkdata = hcat(checkdata_x, checkdata_y)
+	println(checkdata' .- X̂) # should be zeros
+	drawlake(checkdata') # plot
+end
 
 # ╔═╡ d80c35e7-ee90-464e-b7b4-6e2250efc3ff
 md"### creating a continuous representation $r=r(\theta)$
@@ -126,10 +188,13 @@ md"🐜 the `linear_interpolation` function requires the $\theta_i$ in the `θ` 
 "
 
 # ╔═╡ b4addc63-8f97-4c15-8e86-e0f5733071ef
+p = sortperm(θ)
 
 # ╔═╡ 95d4cfa4-964d-45f0-8496-6a7beb382072
+θ_sorted = θ[p]
 
 # ╔═╡ 6fe5a3de-ddda-426a-a072-1db6892f22aa
+r_sorted = r[p]
 
 # ╔═╡ d4a35029-ff51-41f4-ab80-e9e61455d0c1
 md"the function $r(\theta)$ is periodic because $r(-\pi)=r(\pi)$. the `linear_interpolation` function can represent a periodic function. however, it requires us to repeat either the first or last data point by copying it onto the other side of the periodic boundary.
@@ -138,33 +203,43 @@ md"the function $r(\theta)$ is periodic because $r(-\pi)=r(\pi)$. the `linear_in
 "
 
 # ╔═╡ d9849427-3389-4040-900b-d4eadc922c7d
+N = length(θ)
 
 # ╔═╡ 4211a63e-c894-45fc-bb38-b13850dcae4d
+prepend!(θ_sorted, [θ_sorted[N] - 2π])
+
+# ╔═╡ ef735579-310e-4c2d-91f0-f7ac99d71cf0
+prepend!(r_sorted, [r_sorted[N]])
 
 # ╔═╡ 7aa3e93e-d7f7-41b9-aaeb-0a6f13eca4f5
 md"🐜 use the `linear_interpolation` function to construct the function $r(\theta)$ (the linear interpolator of the data $\{(\theta_i, r_i)\}$) and assign it as a variable `r_of_θ`. pass the keyword argument `extrapolation_bc=Periodic()` to the function `linear_interpolation` for the interpolator to implement periodic boundary conditions.
 "
 
 # ╔═╡ 4d7ed267-7483-4fbb-9e4c-75b9474bb651
+r_of_θ = linear_interpolation(θ_sorted, r_sorted; extrapolation_bc=Periodic())
 
 # ╔═╡ 74e6ca9d-cb85-43d2-885c-2ab5ddaabe6f
 md"🐜 to show the interpolator respects periodic boundary conditions, compute $r(\phi)$ and $r(\phi + 2 \pi)$ for some random $\phi$. they should match."
 
 # ╔═╡ 3f2858b0-daec-4e61-9d8d-1ca7bc704428
+begin
+	ϕ = π/4
+	r_of_θ(ϕ) == r_of_θ(ϕ + 2π)
+end
 
 # ╔═╡ b51e69d6-e80e-40b5-b835-59665b6cc9c5
 md"🐜 to ensure your function $r(\theta)$ representing the continuous boundary of the lake makes sense, create a `range` of 500 $\theta$'s between $-\pi$ and $\pi$, compute the corresponding $r$'s, and plot the continuous-looking curve representing the boundary of the lake. also plot the (centered) data points, to ensure the parametric curve $r(\theta)$ is passing through the data points.
 "
 
 # ╔═╡ 54f19024-3808-40c0-91a2-ad36d6a99f9e
-
-# ╔═╡ 6148b291-4b2c-4fa0-a380-35651ded2750
-
-# ╔═╡ a9cf8d6e-1607-44e6-8f74-769ce7bff060
-
-# ╔═╡ ba93499d-3e10-43b1-91f5-41078459f50a
-
-# ╔═╡ dd47e2ed-45b4-4693-afb3-7f03c6c3aa2e
+begin
+	θ_values = range(-π, π, 500)
+	r_values = r_of_θ.(θ_values)
+	x = [r_of_θ(θ)*cos(θ) for θ in θ_values]
+	y = [r_of_θ(θ)*sin(θ) for θ in θ_values]
+	
+	drawlake(X̂, (x, y))
+end
 
 # ╔═╡ 78bd4975-8098-44d6-91ec-977540a11644
 md"## Monte Carlo
@@ -182,6 +257,14 @@ and returns
 "
 
 # ╔═╡ 643006b0-d36e-4c7d-8179-5e52fa3366e1
+function inside_lake((x, y), r_of_θ)
+	r = √(x^2 + y^2)
+	θ = atan(y, x)
+
+	r_lake = r_of_θ(θ)
+
+	return r <= r_lake
+end
 
 # ╔═╡ aa4fa8e2-f34f-43ab-859d-21322c15e6d2
 md"🐜 test your function.
@@ -190,8 +273,10 @@ md"🐜 test your function.
 "
 
 # ╔═╡ 05b591a7-b70b-473c-9ad1-706e5bf95c0c
+inside_lake([0.0, 0.0], r_of_θ)
 
 # ╔═╡ 24ce43ec-89ae-4175-9837-c0ddffdee98f
+inside_lake([-2, 2.0], r_of_θ)
 
 # ╔═╡ 1ed3b8a8-34c4-44e5-876d-cecc4806a122
 md"🐜 (conceptually) draw a square $[-L/2,L/2]^2$ around the lake boundary, with $L$ sufficiently large to include all of the lake.
@@ -199,6 +284,7 @@ assign the variable `L` as the maximum absolute value of a (centered) coordinate
 "
 
 # ╔═╡ 6d65a99e-455b-4fa0-be1a-0ef77e368913
+L = round(maximum(r_sorted) * 2; digits=2) # max r * 2
 
 # ╔═╡ 59e6635c-f01f-4fc3-bb5a-873e2a88ff38
 md"
@@ -217,6 +303,13 @@ and returns
 "
 
 # ╔═╡ 15d303b5-61c5-450e-8301-d7d2f0e822eb
+function run_monte_carlo(N, L, r_of_θ)
+	distr = Uniform(-L/2, L/2)
+	X_rain = rand(distr, (2, N))
+	rain_inside = [inside_lake(X_rain[:, i], r_of_θ) for i=1:N]
+
+	return X_rain, rain_inside
+end
 
 # ╔═╡ de00d71a-52c0-4879-9b2d-fc9f8b5e3f94
 md"🐜 run your Monte carlo simulation with `N=10000`.
@@ -226,11 +319,24 @@ compute your estimate for the area of the lake. it should be close to what Wikip
 	if your area estimate does not match that of Wikipedia within 1 mi², there must be a bug. the next step will help you diagnose.
 "
 
+# ╔═╡ c1c5e37e-6a18-438e-ab56-376ecfecf3e7
+function calc_area(N, L, r_of_θ)
+	X_rain, rain_inside = run_monte_carlo(N, L, r_of_θ)
+	n_inside = sum(rain_inside)
+	area = L^2 * n_inside/N
+	df = DataFrame(
+		"x" => X_rain[1, :],
+		"y" => X_rain[2, :],
+		"rain_inside" => rain_inside
+	)
+	area, df
+end
+
+# ╔═╡ a7659496-6694-4134-952c-152e3f098ba5
+area, df = calc_area(10_000, L, r_of_θ)
+
 # ╔═╡ bab8f895-0913-49fb-ab6b-e49f0ab9af6a
-
-# ╔═╡ 09076209-2dba-4314-b138-f209dbd68d3f
-
-# ╔═╡ dfde3f3c-0b73-401c-9d63-2dc5d2a2eadd
+area
 
 # ╔═╡ 8781b9bc-25e3-471f-a478-877223186f4b
 md"🐜 draw a plot containing:
@@ -240,9 +346,16 @@ and, in addition, to visualize the result of your Monte Carlo simulation:
 * each rain drop that fell in the square, with raindrops that fell in the lake colored blue and raindrops that fell outside the lake colored brown. if your code is correct, you should see the blue lake surrounded by brown. use the `:+` marker for the raindrops.
 "
 
-# ╔═╡ ef063d0c-cf6f-4fe4-9f30-890a7e54bed9
-
 # ╔═╡ 12717627-4edc-445f-84df-5c3cc4c99a1c
+outside_df, inside_df = groupby(df, "rain_inside")
+
+# ╔═╡ 9a261341-e380-41d3-8845-cc5ee5608248
+begin
+	f = drawlake(X̂, (x, y))
+	scatter!(outside_df[:, "x"], outside_df[:, "y"]; color = :brown, marker = :+)
+	scatter!(inside_df[:, "x"], inside_df[:, "y"]; color = :blue, marker = :+)
+	f
+end
 
 # ╔═╡ 27301229-b35e-4fb0-8bf9-c6fe43434821
 md"
@@ -251,6 +364,21 @@ md"
 * check out the map of Crater Lake. it includes Wizard Island. how would you go about accounting for the area of water only, excluding Wizard Island, as a next step?
 * would this strategy to parameterize the lake as $r=r(\theta)$ work with all lakes? for example, look up the shape of Lake Huron. how would you write an `inside_lake` function that works for Lake Huron? (I'm not sure how I would approach this, myself...)
 "
+
+# ╔═╡ 7627b4d4-4663-468e-b5af-41d1ca53f96f
+area2, _ = calc_area(100, L, r_of_θ)
+
+# ╔═╡ 6576b16d-472c-436c-8bc8-abe74aab46f0
+area2
+
+# ╔═╡ 3faec184-f8e2-4778-807d-9230d99db339
+md"""
+At a glance, the runs with 10,000 samples appear to have significantly less variance, around .6 square miles. The runs with 100 samples have a much higher variance, around 3 square miles. This leads to a conclusion that a higher sample size reduces variance.
+
+Wizard Island's area can be estimated using the same methods as above, then the final area can be calculated by subtracting from the lake area calculated above.
+
+This strategy would break down with a lake that is highly non-convex (highly variable border) such that there would be multiple $r$ values for any given $\theta$. One potential solution would be to partition the lake into manageable regions and then aggregate the area results.
+"""
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -269,7 +397,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 CSV = "~0.10.4"
 CairoMakie = "~0.8.13"
 DataFrames = "~1.3.6"
-Distributions = "~0.25.74"
+Distributions = "~0.25.75"
 Interpolations = "~0.14.5"
 JLD2 = "~0.4.23"
 PlutoUI = "~0.7.43"
@@ -279,9 +407,9 @@ PlutoUI = "~0.7.43"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.8.0"
+julia_version = "1.8.1"
 manifest_format = "2.0"
-project_hash = "cd38e273791cda37ccab3a1b6baf202bd197316c"
+project_hash = "2aac4282ebad04e019a8744dae279cbf4a451793"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -377,9 +505,9 @@ version = "0.5.1"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra", "SparseArrays"]
-git-tree-sha1 = "dc4405cee4b2fe9e1108caec2d760b7ea758eca2"
+git-tree-sha1 = "e7ff6cadf743c098e08fca25c91103ee4303c9bb"
 uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-version = "1.15.5"
+version = "1.15.6"
 
 [[deps.ChangesOfVariables]]
 deps = ["ChainRulesCore", "LinearAlgebra", "Test"]
@@ -482,9 +610,9 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[deps.Distributions]]
 deps = ["ChainRulesCore", "DensityInterface", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SparseArrays", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns", "Test"]
-git-tree-sha1 = "70e9677e1195e7236763042194e3fbf147fdb146"
+git-tree-sha1 = "0d7d213133d948c56e8c2d9f4eab0293491d8e4a"
 uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
-version = "0.25.74"
+version = "0.25.75"
 
 [[deps.DocStringExtensions]]
 deps = ["LibGit2"]
@@ -1087,9 +1215,9 @@ version = "0.5.11"
 
 [[deps.Pango_jll]]
 deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "3a121dfbba67c94a5bec9dde613c3d0cbcf3a12b"
+git-tree-sha1 = "84a314e3926ba9ec66ac097e3635e270986b0f10"
 uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
-version = "1.50.3+0"
+version = "1.50.9+0"
 
 [[deps.Parsers]]
 deps = ["Dates"]
@@ -1237,9 +1365,9 @@ version = "1.1.1"
 
 [[deps.SentinelArrays]]
 deps = ["Dates", "Random"]
-git-tree-sha1 = "130c68b3497094753bacf084ae59c9eeaefa2ee7"
+git-tree-sha1 = "c0f56940fc967f3d5efed58ba829747af5f8b586"
 uuid = "91c51154-3ec4-41a3-a24f-3f23e20d615c"
-version = "1.3.14"
+version = "1.3.15"
 
 [[deps.Serialization]]
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
@@ -1298,14 +1426,14 @@ version = "0.1.1"
 
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "Random", "StaticArraysCore", "Statistics"]
-git-tree-sha1 = "efa8acd030667776248eabb054b1836ac81d92f0"
+git-tree-sha1 = "2189eb2c1f25cb3f43e5807f26aa864052e50c17"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.5.7"
+version = "1.5.8"
 
 [[deps.StaticArraysCore]]
-git-tree-sha1 = "ec2bd695e905a3c755b33026954b119ea17f2d22"
+git-tree-sha1 = "6b7ba252635a5eff6a0b0664a41ee140a1c9e72a"
 uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
-version = "1.3.0"
+version = "1.4.0"
 
 [[deps.Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]
@@ -1352,9 +1480,9 @@ version = "1.0.1"
 
 [[deps.Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "LinearAlgebra", "OrderedCollections", "TableTraits", "Test"]
-git-tree-sha1 = "7149a60b01bf58787a1b83dad93f90d4b9afbe5d"
+git-tree-sha1 = "2d7164f7b8a066bcfa6224e67736ce0eb54aef5b"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.8.1"
+version = "1.9.0"
 
 [[deps.Tar]]
 deps = ["ArgTools", "SHA"]
@@ -1555,8 +1683,10 @@ version = "3.5.0+0"
 # ╟─2e87f1a8-b943-4317-99b1-8125e99355f2
 # ╠═4f83121f-4b98-4854-adb4-7e11be25b482
 # ╟─60e98df1-e21a-4c8d-ba54-50455b61379c
+# ╠═68ad49c5-6bd5-460c-b404-33e52292dd6d
+# ╠═e9dbfd3f-a0d9-4dec-899b-aa62be5790dd
+# ╠═010f8cc2-dbc9-4fa0-bc0a-2c088bfc00d5
 # ╠═fd1a78dc-2fb4-48f9-a61c-fa00ecfd367b
-# ╠═6148b291-4b2c-4fa0-a380-35651ded2750
 # ╟─4ec36505-66d9-4cd0-a4c5-e3718d1a5cba
 # ╠═b45e7b0a-8644-4210-bec9-8fd3076b08f4
 # ╟─3a088002-b238-46eb-86f8-483ca5b9a7c2
@@ -1570,7 +1700,6 @@ version = "3.5.0+0"
 # ╠═6d01e662-761f-4f33-89d9-7d29c4196366
 # ╟─cbce6c42-b5db-4b59-8399-495289c3b247
 # ╠═d3a6961d-3f70-4b9e-8bc9-38e8ad91c952
-# ╠═ba93499d-3e10-43b1-91f5-41078459f50a
 # ╟─d80c35e7-ee90-464e-b7b4-6e2250efc3ff
 # ╟─c11fa2f9-a440-4b0e-85ba-27c749f4fccb
 # ╠═b4addc63-8f97-4c15-8e86-e0f5733071ef
@@ -1579,13 +1708,13 @@ version = "3.5.0+0"
 # ╟─d4a35029-ff51-41f4-ab80-e9e61455d0c1
 # ╠═d9849427-3389-4040-900b-d4eadc922c7d
 # ╠═4211a63e-c894-45fc-bb38-b13850dcae4d
+# ╠═ef735579-310e-4c2d-91f0-f7ac99d71cf0
 # ╟─7aa3e93e-d7f7-41b9-aaeb-0a6f13eca4f5
 # ╠═4d7ed267-7483-4fbb-9e4c-75b9474bb651
 # ╟─74e6ca9d-cb85-43d2-885c-2ab5ddaabe6f
 # ╠═3f2858b0-daec-4e61-9d8d-1ca7bc704428
 # ╟─b51e69d6-e80e-40b5-b835-59665b6cc9c5
 # ╠═54f19024-3808-40c0-91a2-ad36d6a99f9e
-# ╠═dd47e2ed-45b4-4693-afb3-7f03c6c3aa2e
 # ╟─78bd4975-8098-44d6-91ec-977540a11644
 # ╠═643006b0-d36e-4c7d-8179-5e52fa3366e1
 # ╟─aa4fa8e2-f34f-43ab-859d-21322c15e6d2
@@ -1596,12 +1725,15 @@ version = "3.5.0+0"
 # ╟─59e6635c-f01f-4fc3-bb5a-873e2a88ff38
 # ╠═15d303b5-61c5-450e-8301-d7d2f0e822eb
 # ╟─de00d71a-52c0-4879-9b2d-fc9f8b5e3f94
+# ╠═c1c5e37e-6a18-438e-ab56-376ecfecf3e7
+# ╠═a7659496-6694-4134-952c-152e3f098ba5
 # ╠═bab8f895-0913-49fb-ab6b-e49f0ab9af6a
-# ╠═09076209-2dba-4314-b138-f209dbd68d3f
-# ╠═dfde3f3c-0b73-401c-9d63-2dc5d2a2eadd
 # ╟─8781b9bc-25e3-471f-a478-877223186f4b
-# ╠═ef063d0c-cf6f-4fe4-9f30-890a7e54bed9
 # ╠═12717627-4edc-445f-84df-5c3cc4c99a1c
+# ╠═9a261341-e380-41d3-8845-cc5ee5608248
 # ╟─27301229-b35e-4fb0-8bf9-c6fe43434821
+# ╠═7627b4d4-4663-468e-b5af-41d1ca53f96f
+# ╠═6576b16d-472c-436c-8bc8-abe74aab46f0
+# ╠═3faec184-f8e2-4778-807d-9230d99db339
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
