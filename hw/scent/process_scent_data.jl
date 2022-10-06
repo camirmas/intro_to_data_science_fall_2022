@@ -5,7 +5,7 @@ using Markdown
 using InteractiveUtils
 
 # ╔═╡ 99004b2e-36f7-11ed-28ae-f3f75c823964
-using CSV, DataFrames, CairoMakie, PlutoUI, Colors, RDKitMinimalLib, ProgressLogging, LinearAlgebra
+using CSV, DataFrames, CairoMakie, PlutoUI, Colors, MolecularGraph, MolecularGraph.Graph, ProgressLogging, LinearAlgebra
 
 # ╔═╡ eb94cba7-7bbe-4948-bcdb-99e24fb36386
 TableOfContents()
@@ -55,16 +55,19 @@ md"## read in and process the Leffingwell data set
 "
 
 # ╔═╡ dc7bd01b-17d7-4276-986e-e273d6072430
+leffingwell = CSV.read("./leffingwell/behavior.csv", DataFrame)
 
 # ╔═╡ fdc340bd-28f1-4278-88ef-1edbe4f5bb7f
 md"👃 to avoid distraction, remove all columns from the `leffingwell` data frame except for the `\"IsomericSMILES\"` and `\"Labels\"` columns."
 
 # ╔═╡ 5fc8cd54-139c-4511-9c42-e06a2b992a68
+select!(leffingwell, ["IsomericSMILES", "Labels"])
 
 # ╔═╡ 5957d5e7-a71e-4e10-a33c-959885a91f36
 md"👃 for clarity, rename the `\"IsomericSMILES\"` column to `\"molecule\"` and the `\"Labels\"` column to `\"odor (Leffingwell)\"`."
 
 # ╔═╡ de7614bb-2037-46c2-9fa3-1d7590f672ce
+rename!(leffingwell, "IsomericSMILES" => "molecule", "Labels" => "odor (Leffingwell)")
 
 # ╔═╡ 397a08ef-5ff3-41a2-8d13-78d9c72ad706
 md"👃 in the `\"odor (Leffingwell)\"` column, remove all characters `]`, `[`, `'`, and `,` in preparation for splitting the long string into a vector of odor perception labels.
@@ -74,11 +77,23 @@ md"👃 in the `\"odor (Leffingwell)\"` column, remove all characters `]`, `[`, 
 "
 
 # ╔═╡ 6e6f641c-f6c6-4387-9271-ffc32b69f5d4
+begin
+	replace_fn(item) = replace(item, "[" => "", "]" => "", "'" => "", "," => "")
+	transform!(leffingwell, "odor (Leffingwell)" => (col -> replace_fn.(col)); renamecols=false)
+end
 
 # ╔═╡ 8f5e6978-9016-4bff-ae41-033f5be4219a
 md"👃 compare the number of _unique_ molecules in the rows of the `leffingwell` data frame with the number of rows. i.e., is the molecule represented in each row unique?"
 
+# ╔═╡ 1c87d0fd-8eef-4284-8d9d-05e02472d26e
+function is_unique(data, field)
+	num_unique = data[:, field] |> unique |> length
+	num_total = nrow(data)
+	return num_unique == num_total
+end
+
 # ╔═╡ bc94bbbe-c2e4-46bf-804c-e51256b2373d
+is_unique(leffingwell, "molecule")
 
 # ╔═╡ 89422b3f-72f9-4de4-bb5e-76a975376b38
 md"## read in and process the Goodscents data
@@ -86,11 +101,13 @@ md"## read in and process the Goodscents data
 "
 
 # ╔═╡ 07ce7883-f61f-4113-99ba-2195b4e41dfa
+behaviors = CSV.read("./goodscents/behavior.csv", DataFrame)
 
 # ╔═╡ fd6bdaf8-2c88-49ee-ba88-77fa97f22279
 md"👃 for clarity, rename the `\"Tags\"` column in `behaviors` data frame to `\"odor (Goodscents)\"`."
 
 # ╔═╡ 0ef23c71-c420-4f0c-8f7b-5ee2da0d765a
+rename!(behaviors, "Tags" => "odor (Goodscents)")
 
 # ╔═╡ 59d32c95-1d43-491a-82fe-d08c59758392
 md"👃 read in:
@@ -99,28 +116,34 @@ md"👃 read in:
 the first table links the `TGSC ID` in the `behaviors` data frame with the `CID` of the molecule, and the second table links the `CID` of the molecule to the `SMILES` string (as we saw in the Leffingwell data set)."
 
 # ╔═╡ 61481f77-230a-4586-92f1-2a452e9c5af4
+identifiers = CSV.read("./goodscents/identifiers.csv", DataFrame)
 
 # ╔═╡ 7c3be4df-b1aa-4d39-9a6d-eea8eadc35c3
+molecules = CSV.read("./goodscents/molecules.csv", DataFrame)
 
 # ╔═╡ 9c2bd4c9-f1b8-4e6e-8e7a-13b4d313ee1a
 md"👃 rename the `\"IsomericSMILES\"` column in the `molecules` data frame as `\"molecule\"`."
 
 # ╔═╡ 5eed2f98-6369-4064-bbaf-1d556c8a5008
+rename!(molecules, "IsomericSMILES" => "molecule")
 
 # ╔═╡ 1d22d49a-cf42-4bf2-8488-72bc38348202
 md"👃 inner-join the `behaviors` and `identifiers` data frames on the `TGSC ID` to link together `TGSC ID`s with `CID`s. assign the joined data frame as `behaviors_w_CIDs`."
 
 # ╔═╡ 74836930-53bf-4b84-84fe-d97823b00072
+behaviors_w_CIDs = innerjoin(behaviors, identifiers, on = "TGSC ID")
 
 # ╔═╡ 4c71faba-774f-435b-b1b8-ffec13ff4f82
 md"👃 finally, inner-join the `behaviors_w_CIDs` and `molecules` data frames on the `CID` to link together the SMILES strings of the molecules and the olfractory perception labels. assign the joined data frame as `goodscents`."
 
 # ╔═╡ 5e15387e-47ee-4a37-8932-2dc388502fab
+goodscents = innerjoin(behaviors_w_CIDs, molecules, on = "CID")
 
 # ╔═╡ 8a263b16-ba11-423f-ba47-0f79a7710d79
 md"👃 to avoid distraction, remove all columns from the `goodscents` data frame except for `\"molecule\"` and `\"odor (Goodscents)\"`."
 
 # ╔═╡ c0cf58f0-c62f-495d-8a7c-0a49dc94cd4b
+select(goodscents, ["molecule", "odor (Goodscents)"])
 
 # ╔═╡ 58c9d4cb-de25-4361-9aaa-2733d03709a0
 md"👃 erroneously, an odor `\"set()\"` is listed on four molecules. remove all rows where the odor is listed as `\"set()\"`.
@@ -130,11 +153,19 @@ md"👃 erroneously, an odor `\"set()\"` is listed on four molecules. remove all
 "
 
 # ╔═╡ f4a33a75-a018-4e9a-a2be-82d9a65f51ba
+filter!(row -> !occursin("set()", row["odor (Goodscents)"]), goodscents)
+
+# ╔═╡ 0bede851-5cb6-43b5-9335-7917dbf36a2d
+nrow(filter(row -> occursin("set()", row["odor (Goodscents)"]), goodscents)) == 0
 
 # ╔═╡ a5d0d0de-b54e-4e11-8176-8c2cb45f15e5
 md"👃again, remove all characters `{`, `}`, `,`, and `'` from the `\"odor (Goodscents)\"` column of the `goodscents` data frame in preparation for splitting it into a vector of olfactory descriptors."
 
-# ╔═╡ 10137fbc-6530-4b70-9297-d5a5b37443d9
+# ╔═╡ 2c63ecd5-74dd-4caf-ba98-68c470995357
+begin
+	replace_fn2(item) = replace(item, "{" => "", "}" => "", "'" => "", "," => "")
+	transform!(goodscents, "odor (Goodscents)" => (col -> replace_fn2.(col)); renamecols=false)
+end
 
 # ╔═╡ e221d029-7526-4cb1-9df5-fd9624f74635
 md"👃 compare the number _unique_ molecules (SMILES strings) in the `goodscents` data frame with the number of rows in it.
@@ -143,9 +174,8 @@ md"👃 compare the number _unique_ molecules (SMILES strings) in the `goodscent
 	there are duplicate molecules! 😱
 "
 
-# ╔═╡ 1c87d0fd-8eef-4284-8d9d-05e02472d26e
-
-# ╔═╡ 14a1bb54-35fe-4e77-acab-fca1f7671165
+# ╔═╡ acb0f47b-b4d4-4349-8296-114f4ac44c65
+@assert !is_unique(goodscents, "molecule")
 
 # ╔═╡ 54bdbcdc-dff8-4771-b1d7-a89c0f4b164c
 md"👃 merge duplicated rows in `goodscents` by concatenating the list of their odors with a space in between. e.g.
@@ -169,14 +199,14 @@ we will remove duplicate odor labels later.
 assign the new data frame as `goodscents_fixed`.
 "
 
-# ╔═╡ d962f970-e62c-4a05-8219-2c81a54bdaba
-
 # ╔═╡ 9ad586da-ccbc-46e8-8e93-7f59ffb3bfd3
+goodscents_fixed = combine(groupby(goodscents, "molecule"), "odor (Goodscents)" => (col) -> join(col, " "); renamecols=false)
 
 # ╔═╡ 614195ed-bd2f-444f-ac82-f2b8511117da
 md"👃 check that the number of rows in `goodscents_fixed` is equal to the number of unique molecules in the `\"molecules\"` column."
 
 # ╔═╡ 1704b383-163e-47e8-93ea-9e28170fbb6d
+@assert is_unique(goodscents_fixed, "molecule")
 
 # ╔═╡ 26a2edab-2bb5-4ca6-89ff-d2358ae9512c
 md"## join the Leffingwell and Goodscents data sets
@@ -185,6 +215,12 @@ md"## join the Leffingwell and Goodscents data sets
 "
 
 # ╔═╡ b3c8b89e-0806-410e-b991-f288454811e6
+data = outerjoin(leffingwell, goodscents_fixed, on = "molecule")
+
+# ╔═╡ 0389c361-bd08-4bf9-9f6c-bde8cc77dd6e
+md"""
+In this case, our outer join will combine rows of the two datasets based on matching molecules, keeping all column names from both. In the case that Goodscents has a molecule that Leffingwell doesn't, the value for `odor (Leffingwell)` will show up as `missing`, and vice-versa.
+"""
 
 # ╔═╡ f6768d02-f015-4a0b-bce0-5478e7d613f1
 md"how many molecules:
@@ -195,16 +231,32 @@ judging from the pattern of `missing`'s,
 "
 
 # ╔═╡ 1e270a21-497e-48fb-bdc5-7d25634e7e98
+nrow(data)
 
 # ╔═╡ 20a0fee0-1436-409d-93c1-07c2cb15c31b
+@assert filter(row -> ismissing(row["odor (Leffingwell)"]) && ismissing(row["odor (Goodscents)"]), data) |> nrow == 0
 
 # ╔═╡ 526c3b02-0aca-413d-b45b-f8ed477e494c
+filter(row -> ismissing(row["odor (Leffingwell)"]) && !ismissing(row["odor (Goodscents)"]), data)
 
 # ╔═╡ e02f4169-d3b5-4807-a561-ad8004ebdd7d
 md"
 👃 getting ready to combine the odor columns into one, replace each occurance of `missing` with an empty string `\"\"`."
 
 # ╔═╡ f7016dea-fe6c-4a73-ae00-0528945e9194
+transform!(data, "odor (Leffingwell)" => col -> replace(col, missing => ""); renamecols = false)
+
+# ╔═╡ d8d6a9e0-3452-4de3-8481-b8e0babce8e9
+transform!(data, "odor (Goodscents)" => col -> replace(col, missing => ""); renamecols = false)
+
+# ╔═╡ 67dfa709-35a0-4672-b4bc-c044193f2185
+# ensure no more missing values
+begin
+	num_missing = 0
+	num_missing += filter(row -> ismissing(row["odor (Goodscents)"]), data) |> nrow
+	num_missing += filter(row -> ismissing(row["odor (Leffingwell)"]), data) |> nrow
+	@assert num_missing == 0
+end
 
 # ╔═╡ d83bcd9b-895f-47b8-b99e-a6eaabd9a62c
 md"👃 append a new column to `data`, `\"odor\"` that contains the union of the odor labels from the Goodscents and Leffingwell studies.
@@ -214,17 +266,20 @@ md"👃 append a new column to `data`, `\"odor\"` that contains the union of the
 "
 
 # ╔═╡ 58930559-7dd7-461b-8ca8-cdeab3cdb14f
+transform!(data, ["odor (Goodscents)", "odor (Leffingwell)"] => ByRow((good, leff) -> "$good $leff") => "odor")
 
 # ╔═╡ 788a8f26-b22a-4035-ab15-20c8d776fa71
 md"👃 convert the `odor` column, currently a long `String` where olfactory labels are separated by spaces, into a vector of `String`'s, one for each olfactory perception label. also, avoid repeated olfactory labels on the same molecule using `unique`."
 
 # ╔═╡ 5b968cbc-e084-4a4b-be7b-59947e760175
+transform!(data, "odor" => ByRow(odor -> odor |> split |> unique); renamecols = false)
 
 # ╔═╡ 664a1da4-e753-4617-9dd6-09e7e1fea44d
 md"👃 to avoid distraction, delete all columns from `data` except for `\"molecule\"` and `\"odor\"`.
 "
 
 # ╔═╡ 5dbf1a4d-60f1-4d34-947b-cf6408b4c903
+select!(data, ["molecule", "odor"])
 
 # ╔═╡ d44d24ed-5c20-4003-bbb3-75a5dec7b499
 md"🚀 voila! this is the joined data! machine learning studies are predicated on large data sets, so combining the data from these two sources should help with e.g. predictivity of the smell of a molecule by a machine learning algorithm trained on this data (compared to e.g. just using Leffingwell or Goodscents alone).
@@ -239,6 +294,7 @@ the goal here is to conduct a similar analysis of the olfactory data as in Fig. 
 md"👃 append a new column to `data`, `\"# odor labels\"`., that lists the number of unique olfactory perception labels on each molecule in the data."
 
 # ╔═╡ a11f06bb-9fcc-431d-9967-f8d26aa44bf2
+transform!(data, "odor" => ByRow(length) => "# odor labels")
 
 # ╔═╡ b562ad25-45e5-4fc9-8d74-27b9727e4766
 md"👃 create a data frame `odor_label_counts` that lists the # of molecules with a given number of odor labels.
@@ -255,25 +311,45 @@ md"👃 create a data frame `odor_label_counts` that lists the # of molecules wi
 "
 
 # ╔═╡ 0233d3e0-c934-48c2-be82-8e041227aec5
+odor_label_counts = combine(groupby(data, "# odor labels"), "molecule" => length => "# molecules")
 
 # ╔═╡ 2a2910af-dcf2-4aa7-bfc3-32950d73cc9e
 md"👃 like in Fig. 3a [here](https://arxiv.org/pdf/1910.10685.pdf) (yours will be a bit different), create a bar plot visualizing the number of molecules with a given number of olfactory labels on it. use your data frame `odor_label_counts` for this."
 
 # ╔═╡ ec3b2463-4284-41bb-9c60-63ba8a7b6705
+begin
+	fig = Figure()
+	ax = Axis(fig[1, 1],
+		xlabel="Labels per molecule",
+		ylabel="Counts",
+		xticks=-1:2:nrow(odor_label_counts)
+	)
+	barplot!(odor_label_counts[:, 1], odor_label_counts[:, 2])
+	xlims!(0, nothing)
+	
+	fig
+end
 
 # ╔═╡ 53f58ff1-1f99-4205-9346-bf2f8ad4e74d
 md"👃 how many molecules in the data include a label \"mint\"?"
 
 # ╔═╡ b1a04dc4-b281-413d-8cc0-3f704d1e6e3b
+filter(row -> "mint" in row["odor"], data) |> nrow
 
 # ╔═╡ a0d1b3df-b682-4335-be6f-6e2224f4b990
 md"👃 what is the SMILES string of the only molecule in the data with the label \"mint\" _and_ \"celery\"? visualize the structure of the molecule using `RDKit` or `MolecularGraph`."
 
 # ╔═╡ 516b9dd4-c985-4c85-bd9c-463bcb90d6c6
+molstr = filter(row -> "mint" in row["odor"] && "celery" in row["odor"], data)[1, "molecule"]
 
 # ╔═╡ f02bd4af-204c-440b-b2e1-c78657b4e7da
+mol = smilestomol(molstr)
 
 # ╔═╡ c2864dbf-84d3-41b1-b3f5-4319786867de
+molsvg = drawsvg(mol, 300, 300)
+
+# ╔═╡ 4478fe2f-2ddb-4b6e-8d70-2ade93771aef
+HTML(molsvg)
 
 # ╔═╡ 47478ef0-a512-47d4-a171-74e073cab810
 md"👃 we now wish to visualize the prevalence of each odor descriptor. create a bar plot that shows, for each unique odor label, how many molecules have that odor (according to the experts in the studies). 
@@ -292,21 +368,58 @@ in my view, this is a better way to present the (actually, MORE) information (th
 "
 
 # ╔═╡ 25a5c232-a0f6-4a1b-8f91-3cee5d97b3db
-
-# ╔═╡ 75e8312d-1614-4626-99d1-3e07fdec8bab
-
-# ╔═╡ 3d1f7cfa-ae9b-4ed1-9261-595fee65a974
+odor_labels = vcat(data[:, "odor"]...) |> unique
 
 # ╔═╡ fa50cac7-64f9-4439-9645-c6c0b4fa0b99
+begin
+	odor_counts = Dict()
+	
+	for row in eachrow(data)
+		for label in row["odor"]
+			if !(label in keys(odor_counts))
+				odor_counts[label] = 1
+			else
+				odor_counts[label] += 1
+			end
+		end
+	end
 
-# ╔═╡ 28ec1019-f51e-4dd9-a5ca-cfd0a095fcea
+	odor_keys = collect(keys(odor_counts))
+	odor_vals = collect(values(odor_counts))
+	odor_counts_df = DataFrame("odor" => odor_keys, "count" => odor_vals)
+	sort!(odor_counts_df, "count")
+end
+
+# ╔═╡ 82d9a8ab-5ca2-42eb-a981-1bc8337fea97
+begin
+	xrange = 1:nrow(odor_counts_df)
+	fig2 = Figure(; resolution=(500, 10000))
+	ax2 = Axis(fig2[1, 1];
+		xlabel="Counts",
+		ylabel="Odor",
+		yticks=(xrange, odor_counts_df[:, "odor"]),
+	)
+	xlims!(nothing, odor_counts_df[:, "count"][end] + 400)
+	barplot!(xrange, Float64.(odor_counts_df[:, "count"]); 
+		direction=:x, 
+		label_size=12, 
+		bar_labels=:y, 
+		label_formatter= x -> "$(Int64(x))")
+
+	fig2
+end
+
+# ╔═╡ c79c3601-342e-4f3e-983c-808c543fea5b
+odor_counts_df[:, "count"][end]
 
 # ╔═╡ 2045e894-396b-44d3-8dd8-ff0b88c598c2
 md"👃 how many of the odorants have a carbonyl group in their structure? this is expressed as the SMARTS pattern \"[CX3]=[OX1]\"."
 
-# ╔═╡ df968d81-7b26-4324-a9a1-fc2bd9f6777d
+# ╔═╡ b7ab6bce-2b2e-4b2b-a2ad-72e753bf8c8d
+querymol = "[CX3]=[OX1]" |> smartstomol
 
-# ╔═╡ 72101250-16ae-4c20-a7aa-e1479a41860f
+# ╔═╡ 75c286dc-1ca2-4771-8bf9-a97a1c99fb08
+filter(row -> hassubstructmatch(smilestomol(row["molecule"]), querymol), data) |> nrow
 
 # ╔═╡ 58b6234b-a10e-46de-8031-ab65028d3c89
 md"
@@ -317,19 +430,25 @@ the paper notes
 "
 
 # ╔═╡ 8bd8627b-9884-4efd-acf9-e1e57a52c833
+count_apple = filter(row -> "apple" in row["odor"], data) |> nrow
 
 # ╔═╡ 06eabbc3-94af-4b76-9369-9e5df468cbbc
+count_apple_fruity = filter(row -> ("apple" in row["odor"]) && ("fruity" in row["odor"]), data) |> nrow
 
 # ╔═╡ 494521db-50e9-48ee-913e-1ac3c70d3172
+count_apple_fruity/count_apple
 
 # ╔═╡ 380f9d36-fb68-490a-9021-16c265056a3e
 md"👃 (a weak co-occurance) among all molecules with the label \"cabbage\", what fraction also have the label \"musk\"?"
 
 # ╔═╡ c63f9137-574d-4c70-91ce-99fdc304bf02
+count_cabbage = filter(row -> "cabbage" in row["odor"], data) |> nrow
 
 # ╔═╡ 1b3230db-bdda-4c71-9b33-31c779d50a7b
+count_cabbage_musk = filter(row -> ("cabbage" in row["odor"]) && ("musk" in row["odor"]), data) |> nrow
 
 # ╔═╡ 7242a8c3-362c-4df9-b518-1a2a40ca2f39
+count_cabbage_musk/count_cabbage
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -339,27 +458,27 @@ CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MolecularGraph = "6c89ec66-9cd8-5372-9f91-fabc50dd27fd"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 ProgressLogging = "33c8b6b6-d38a-422a-b730-caa89a2f386c"
-RDKitMinimalLib = "44044271-7623-48dc-8250-42433c44e4b7"
 
 [compat]
 CSV = "~0.10.4"
 CairoMakie = "~0.8.13"
 Colors = "~0.12.8"
-DataFrames = "~1.3.6"
+DataFrames = "~1.4.1"
+MolecularGraph = "~0.11.0"
 PlutoUI = "~0.7.43"
 ProgressLogging = "~0.1.4"
-RDKitMinimalLib = "~1.1.1"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.8.0"
+julia_version = "1.8.1"
 manifest_format = "2.0"
-project_hash = "2cad83acc1a81f7209e283dd04da869a9fb6ae0e"
+project_hash = "84949da14ae20731ce719f0ae4c2ebe6eb0392db"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -503,9 +622,9 @@ version = "0.12.8"
 
 [[deps.Compat]]
 deps = ["Dates", "LinearAlgebra", "UUIDs"]
-git-tree-sha1 = "5856d3031cdb1f3b2b6340dfdc66b6d9a149a374"
+git-tree-sha1 = "3ca828fe1b75fa84b021a7860bd039eaea84d2f2"
 uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
-version = "4.2.0"
+version = "4.3.0"
 
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -528,10 +647,10 @@ uuid = "9a962f9c-6df0-11e9-0e5d-c546b8b5ee8a"
 version = "1.12.0"
 
 [[deps.DataFrames]]
-deps = ["Compat", "DataAPI", "Future", "InvertedIndices", "IteratorInterfaceExtensions", "LinearAlgebra", "Markdown", "Missings", "PooledArrays", "PrettyTables", "Printf", "REPL", "Reexport", "SortingAlgorithms", "Statistics", "TableTraits", "Tables", "Unicode"]
-git-tree-sha1 = "db2a9cb664fcea7836da4b414c3278d71dd602d2"
+deps = ["Compat", "DataAPI", "Future", "InvertedIndices", "IteratorInterfaceExtensions", "LinearAlgebra", "Markdown", "Missings", "PooledArrays", "PrettyTables", "Printf", "REPL", "Random", "Reexport", "SnoopPrecompile", "SortingAlgorithms", "Statistics", "TableTraits", "Tables", "Unicode"]
+git-tree-sha1 = "558078b0b78278683a7445c626ee78c86b9bb000"
 uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-version = "1.3.6"
+version = "1.4.1"
 
 [[deps.DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
@@ -547,6 +666,10 @@ version = "1.0.0"
 [[deps.Dates]]
 deps = ["Printf"]
 uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
+
+[[deps.DelimitedFiles]]
+deps = ["Mmap"]
+uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 
 [[deps.DensityInterface]]
 deps = ["InverseFunctions", "Test"]
@@ -796,9 +919,9 @@ version = "0.1.3"
 
 [[deps.InlineStrings]]
 deps = ["Parsers"]
-git-tree-sha1 = "d19f9edd8c34760dca2de2b503f969d8700ed288"
+git-tree-sha1 = "d0ca109edbae6b4cc00e751a29dcb15a124053d6"
 uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.1.4"
+version = "1.2.0"
 
 [[deps.IntelOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -812,9 +935,9 @@ uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
 [[deps.Interpolations]]
 deps = ["Adapt", "AxisAlgorithms", "ChainRulesCore", "LinearAlgebra", "OffsetArrays", "Random", "Ratios", "Requires", "SharedArrays", "SparseArrays", "StaticArrays", "WoodburyMatrices"]
-git-tree-sha1 = "f67b55b6447d36733596aea445a9f119e83498b6"
+git-tree-sha1 = "842dd89a6cb75e02e85fdd75c760cdc43f5d6863"
 uuid = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
-version = "0.14.5"
+version = "0.14.6"
 
 [[deps.IntervalSets]]
 deps = ["Dates", "Random", "Statistics"]
@@ -904,6 +1027,12 @@ version = "1.3.0"
 [[deps.LazyArtifacts]]
 deps = ["Artifacts", "Pkg"]
 uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
+
+[[deps.LazyJSON]]
+deps = ["JSON", "OrderedCollections", "PropertyDicts"]
+git-tree-sha1 = "ce08411caa70e0c9e780f142f59debd89a971738"
+uuid = "fc18253b-5e1b-504c-a4a2-9ece4944c004"
+version = "0.2.2"
 
 [[deps.LazyModules]]
 git-tree-sha1 = "a560dd966b386ac9ae60bdd3a3d3a326062d3c3e"
@@ -1033,6 +1162,12 @@ version = "1.0.2"
 [[deps.Mmap]]
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 
+[[deps.MolecularGraph]]
+deps = ["DelimitedFiles", "JSON", "LinearAlgebra", "Printf", "Requires", "Statistics", "Unmarshal", "YAML", "coordgenlibs_jll", "libinchi_jll"]
+git-tree-sha1 = "2c4173d918e302011361852864923f9bc2fb6b4c"
+uuid = "6c89ec66-9cd8-5372-9f91-fabc50dd27fd"
+version = "0.11.0"
+
 [[deps.MosaicViews]]
 deps = ["MappedArrays", "OffsetArrays", "PaddedViews", "StackViews"]
 git-tree-sha1 = "b34e3bc3ca7c94914418637cb10cc4d1d80d877d"
@@ -1058,6 +1193,11 @@ version = "1.0.2"
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.2.0"
+
+[[deps.Nullables]]
+git-tree-sha1 = "8f87854cc8f3685a60689d8edecaa29d2251979b"
+uuid = "4d1e1d77-625e-5b40-9113-a560ec7a8ecd"
+version = "1.0.0"
 
 [[deps.Observables]]
 git-tree-sha1 = "5a9ea4b9430d511980c01e9f7173739595bbd335"
@@ -1209,10 +1349,10 @@ uuid = "21216c6a-2e73-6563-6e65-726566657250"
 version = "1.3.0"
 
 [[deps.PrettyTables]]
-deps = ["Crayons", "Formatting", "Markdown", "Reexport", "Tables"]
-git-tree-sha1 = "dfb54c4e414caa595a1f2ed759b160f5a3ddcba5"
+deps = ["Crayons", "Formatting", "Markdown", "Reexport", "StringManipulation", "Tables"]
+git-tree-sha1 = "460d9e154365e058c4d886f6f7d6df5ffa1ea80e"
 uuid = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
-version = "1.3.1"
+version = "2.1.2"
 
 [[deps.Printf]]
 deps = ["Unicode"]
@@ -1230,6 +1370,11 @@ git-tree-sha1 = "d7a7aef8f8f2d537104f170139553b14dfe39fe9"
 uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
 version = "1.7.2"
 
+[[deps.PropertyDicts]]
+git-tree-sha1 = "8cf3b5cea994cfa9f238e19c3946a39cf051896c"
+uuid = "f8a19df8-e894-5f55-a973-672c1158cbca"
+version = "0.1.2"
+
 [[deps.QOI]]
 deps = ["ColorTypes", "FileIO", "FixedPointNumbers"]
 git-tree-sha1 = "18e8f4d1426e965c7b532ddd260599e1510d26ce"
@@ -1241,18 +1386,6 @@ deps = ["DataStructures", "LinearAlgebra"]
 git-tree-sha1 = "3c009334f45dfd546a16a57960a821a1a023d241"
 uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 version = "2.5.0"
-
-[[deps.RDKitMinimalLib]]
-deps = ["JSON", "RDKit_jll"]
-git-tree-sha1 = "50cba95129b4b403a4773861c76590b7942c571e"
-uuid = "44044271-7623-48dc-8250-42433c44e4b7"
-version = "1.1.1"
-
-[[deps.RDKit_jll]]
-deps = ["Artifacts", "FreeType2_jll", "JLLWrappers", "Libdl", "Pkg", "Zlib_jll", "boost_jll"]
-git-tree-sha1 = "3b4dcfd3d448cb90d2d69c829bcaa03b5bc068de"
-uuid = "03d1d220-30e6-562a-9e1a-3062d7b56d75"
-version = "2022.3.1+0"
 
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
@@ -1412,6 +1545,17 @@ git-tree-sha1 = "5783b877201a82fc0014cbf381e7e6eb130473a4"
 uuid = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
 version = "1.0.1"
 
+[[deps.StringEncodings]]
+deps = ["Libiconv_jll"]
+git-tree-sha1 = "50ccd5ddb00d19392577902f0079267a72c5ab04"
+uuid = "69024149-9ee7-55f6-a4c4-859efe599b68"
+version = "0.3.5"
+
+[[deps.StringManipulation]]
+git-tree-sha1 = "46da2434b41f41ac3594ee9816ce5541c6096123"
+uuid = "892a3eda-7b42-436c-8928-eab12a02cf0e"
+version = "0.3.0"
+
 [[deps.StructArrays]]
 deps = ["Adapt", "DataAPI", "StaticArraysCore", "Tables"]
 git-tree-sha1 = "8c6ac65ec9ab781af05b08ff305ddc727c25f680"
@@ -1483,6 +1627,12 @@ deps = ["REPL"]
 git-tree-sha1 = "53915e50200959667e78a92a418594b428dffddf"
 uuid = "1cfade01-22cf-5700-b092-accc4b62d6e1"
 version = "0.4.1"
+
+[[deps.Unmarshal]]
+deps = ["JSON", "LazyJSON", "Missings", "Nullables", "Requires"]
+git-tree-sha1 = "ee46863309f8f942249e1df1b74ba3088ff0f151"
+uuid = "cbff2730-442d-58d7-89d1-8e530c41eb02"
+version = "0.4.4"
 
 [[deps.WeakRefStrings]]
 deps = ["DataAPI", "InlineStrings", "Parsers"]
@@ -1556,16 +1706,22 @@ git-tree-sha1 = "79c31e7844f6ecf779705fbc12146eb190b7d845"
 uuid = "c5fb5394-a638-5e4d-96e5-b29de1b5cf10"
 version = "1.4.0+3"
 
+[[deps.YAML]]
+deps = ["Base64", "Dates", "Printf", "StringEncodings"]
+git-tree-sha1 = "3c6e8b9f5cdaaa21340f841653942e1a6b6561e5"
+uuid = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+version = "0.4.7"
+
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
 version = "1.2.12+3"
 
-[[deps.boost_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Zlib_jll"]
-git-tree-sha1 = "7a89efe0137720ca82f99e8daa526d23120d0d37"
-uuid = "28df3c45-c428-5900-9ff8-a3135698ca75"
-version = "1.76.0+1"
+[[deps.coordgenlibs_jll]]
+deps = ["Libdl", "Pkg"]
+git-tree-sha1 = "95b76590b9a558b69566b59cc64415b29618113b"
+uuid = "f6050b86-aaaf-512f-8549-0afff1b4d57f"
+version = "1.4.0+0"
 
 [[deps.isoband_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1595,6 +1751,12 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "daacc84a041563f965be61859a36e17c4e4fcd55"
 uuid = "f638f0a6-7fb0-5443-88ba-1cc74229b280"
 version = "2.0.2+0"
+
+[[deps.libinchi_jll]]
+deps = ["Libdl", "Pkg"]
+git-tree-sha1 = "63e5bdbfc6fd1b4a14dda769dfad40a2e78baaeb"
+uuid = "172afb32-8f1c-513b-968f-184fcd77af72"
+version = "1.5.0+0"
 
 [[deps.libpng_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Zlib_jll"]
@@ -1652,6 +1814,7 @@ version = "3.5.0+0"
 # ╟─397a08ef-5ff3-41a2-8d13-78d9c72ad706
 # ╠═6e6f641c-f6c6-4387-9271-ffc32b69f5d4
 # ╟─8f5e6978-9016-4bff-ae41-033f5be4219a
+# ╠═1c87d0fd-8eef-4284-8d9d-05e02472d26e
 # ╠═bc94bbbe-c2e4-46bf-804c-e51256b2373d
 # ╟─89422b3f-72f9-4de4-bb5e-76a975376b38
 # ╠═07ce7883-f61f-4113-99ba-2195b4e41dfa
@@ -1670,24 +1833,26 @@ version = "3.5.0+0"
 # ╠═c0cf58f0-c62f-495d-8a7c-0a49dc94cd4b
 # ╟─58c9d4cb-de25-4361-9aaa-2733d03709a0
 # ╠═f4a33a75-a018-4e9a-a2be-82d9a65f51ba
+# ╠═0bede851-5cb6-43b5-9335-7917dbf36a2d
 # ╟─a5d0d0de-b54e-4e11-8176-8c2cb45f15e5
-# ╠═10137fbc-6530-4b70-9297-d5a5b37443d9
+# ╠═2c63ecd5-74dd-4caf-ba98-68c470995357
 # ╟─e221d029-7526-4cb1-9df5-fd9624f74635
-# ╠═1c87d0fd-8eef-4284-8d9d-05e02472d26e
-# ╠═14a1bb54-35fe-4e77-acab-fca1f7671165
+# ╠═acb0f47b-b4d4-4349-8296-114f4ac44c65
 # ╟─54bdbcdc-dff8-4771-b1d7-a89c0f4b164c
-# ╠═d962f970-e62c-4a05-8219-2c81a54bdaba
 # ╠═9ad586da-ccbc-46e8-8e93-7f59ffb3bfd3
 # ╟─614195ed-bd2f-444f-ac82-f2b8511117da
 # ╠═1704b383-163e-47e8-93ea-9e28170fbb6d
 # ╟─26a2edab-2bb5-4ca6-89ff-d2358ae9512c
 # ╠═b3c8b89e-0806-410e-b991-f288454811e6
+# ╠═0389c361-bd08-4bf9-9f6c-bde8cc77dd6e
 # ╟─f6768d02-f015-4a0b-bce0-5478e7d613f1
 # ╠═1e270a21-497e-48fb-bdc5-7d25634e7e98
 # ╠═20a0fee0-1436-409d-93c1-07c2cb15c31b
 # ╠═526c3b02-0aca-413d-b45b-f8ed477e494c
 # ╟─e02f4169-d3b5-4807-a561-ad8004ebdd7d
 # ╠═f7016dea-fe6c-4a73-ae00-0528945e9194
+# ╠═d8d6a9e0-3452-4de3-8481-b8e0babce8e9
+# ╠═67dfa709-35a0-4672-b4bc-c044193f2185
 # ╟─d83bcd9b-895f-47b8-b99e-a6eaabd9a62c
 # ╠═58930559-7dd7-461b-8ca8-cdeab3cdb14f
 # ╟─788a8f26-b22a-4035-ab15-20c8d776fa71
@@ -1708,15 +1873,15 @@ version = "3.5.0+0"
 # ╠═516b9dd4-c985-4c85-bd9c-463bcb90d6c6
 # ╠═f02bd4af-204c-440b-b2e1-c78657b4e7da
 # ╠═c2864dbf-84d3-41b1-b3f5-4319786867de
+# ╠═4478fe2f-2ddb-4b6e-8d70-2ade93771aef
 # ╟─47478ef0-a512-47d4-a171-74e073cab810
 # ╠═25a5c232-a0f6-4a1b-8f91-3cee5d97b3db
-# ╠═75e8312d-1614-4626-99d1-3e07fdec8bab
-# ╠═3d1f7cfa-ae9b-4ed1-9261-595fee65a974
 # ╠═fa50cac7-64f9-4439-9645-c6c0b4fa0b99
-# ╠═28ec1019-f51e-4dd9-a5ca-cfd0a095fcea
+# ╠═82d9a8ab-5ca2-42eb-a981-1bc8337fea97
+# ╠═c79c3601-342e-4f3e-983c-808c543fea5b
 # ╟─2045e894-396b-44d3-8dd8-ff0b88c598c2
-# ╠═df968d81-7b26-4324-a9a1-fc2bd9f6777d
-# ╠═72101250-16ae-4c20-a7aa-e1479a41860f
+# ╠═b7ab6bce-2b2e-4b2b-a2ad-72e753bf8c8d
+# ╠═75c286dc-1ca2-4771-8bf9-a97a1c99fb08
 # ╟─58b6234b-a10e-46de-8031-ab65028d3c89
 # ╠═8bd8627b-9884-4efd-acf9-e1e57a52c833
 # ╠═06eabbc3-94af-4b76-9369-9e5df468cbbc
